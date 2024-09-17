@@ -1,0 +1,71 @@
+{{ if .Values.release.deploy }}
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.appName }}
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.deployment.replicas }}
+  revisionHistoryLimit: {{ if eq .Values.namespace "production" }}4{{ else }}0{{ end }}
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Values.appName }}
+        app.kubernetes.io/component: {{ .Values.release.component }}
+        app.kubernetes.io/managed-by: {{ .Values.release.squad }}
+        app: {{ .Values.appName }}
+      annotations:
+        app: {{ .Values.appName }}
+
+    spec:
+      containers:
+      - name: {{ .Values.appName }}
+        nodeSelector: {{ if .Values.nodeSelector }}{{ tpl .Values.nodeSelector . | toYaml }}{{ end }}
+        image: 
+          repository: {{ .Values.image.repository }}
+          tag: {{ .Values.image.tag }}
+          pullPolicy: {{ .Values.deployment.PullPolicy }}
+        ports:
+        - containerPort: {{ .Values.release.apiContainerPort }}
+        env:
+          {{- range $key, $value := .Values.release.envvars }}
+          - name: {{ $key }}
+            value: {{ $value | quote }}
+          {{- end }}
+        envFrom:
+          - secretRef:
+              name: {{ .Values.appName }}
+              optional: true
+          - configMapRef:
+              name: {{ .Values.appName }}-cm
+              optional: true
+        {{ if .Values.healthchecks.enabled }}
+        livenessProbe:
+          httpGet:
+            path: /{{ .Values.appName }}/health
+            port: {{ .Values.release.apiContainerPort }}
+            scheme: HTTP
+          timeoutSeconds: 10
+          initialDelaySeconds: 20
+          periodSeconds: 30
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /{{ .Values.appName }}/health
+            port: {{ .Values.release.apiContainerPort }}
+            scheme: HTTP
+          timeoutSeconds: 15
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          successThreshold: 1
+          failureThreshold: 3
+        {{ end }}
+        resources:
+          {{ include "resourceValues" .Values.release.apiTier | indent 12 }}
+{{ end }}

@@ -1,0 +1,65 @@
+{{ if .Values.redis.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-{{ .Values.appName }}-{{ .Values.namespace }}
+  namespace: caching
+spec:
+  selector:
+    app: redis-{{ .Values.appName }}-{{ .Values.namespace }}
+  ports:
+    - name: service-port
+      protocol: TCP
+      port: {{ .Values.redis.port }}
+      targetPort: {{ .Values.redis.port }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-{{ .Values.appName }}-{{ .Values.namespace }}
+  namespace: caching
+  labels:
+     app: redis-{{ .Values.appName }}-{{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-{{ .Values.appName }}-{{ .Values.namespace }}
+  template:
+    metadata:
+      labels:
+        app: redis-{{ .Values.appName }}-{{ .Values.namespace }}
+    spec:
+    #   imagePullSecrets:
+    #   - name: {{ .Values.release.repoSecretName }}
+      containers:
+      - name: redis-{{ .Values.appName }}-{{ .Values.namespace }}
+        image: {{ .Values.redis.image }}
+        command:
+          - redis-server
+          - "/usr/local/etc/redis/redis.conf"
+        args:
+          - --requirepass
+          - $(REDIS_PASSWORD)
+        ports:
+        - containerPort: {{ .Values.redis.port }}
+        envFrom:
+        - secretRef:
+            name: redis-secret # a definir
+        resources:
+          limits:
+            cpu: "0.1"
+            memory: "64Mi"
+        volumeMounts:
+        - mountPath: /usr/local/etc/redis
+          name: {{ .Values.redis.tier }} # a definir
+      volumes:
+        - name: {{ .Values.redis.tier }} # a definir
+          configMap:
+            name: {{ .Values.redis.tier }} # a definir
+            items:
+            - key: redis-config
+              path: redis.conf
+{{ end }}
